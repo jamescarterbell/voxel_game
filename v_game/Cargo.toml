@@ -1,0 +1,19 @@
+[package]
+name = "v_game"
+version = "0.1.0"
+authors = ["James <jamescarterbell@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+glium = "0.27.0"
+glutin = "0.24.0"
+nalgebra = "0.21.0"
+specs = "0.16.1"
+nalgebra-glm = "0.7.0"
+v_inputs = {path="./v_inputs"}
+v_windowing = {path="./v_windowing"}
+v_renderer = {path="./v_renderer"}
+v_transform = {path="./v_transform"}
+v_agents = {path="./v_agents"}
