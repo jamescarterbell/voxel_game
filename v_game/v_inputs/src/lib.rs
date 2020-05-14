@@ -6,18 +6,18 @@ use enum_display_derive::*;
 use std::fmt::Display;
 use std::collections::HashMap;
 use glutin::event::ElementState;
-pub use glutin::event::MouseButton;
+use glutin::event::DeviceEvent;
+pub use glutin::{dpi::PhysicalPosition};
 use std::collections::hash_map::Entry;
 use nalgebra as na;
 use na::{Vector2};
-use v_windowing::ApplicationEvent;
+use v_windowing::{ApplicationEvent, WindowDisplay};
 
 pub struct Inputs{
     keys: HashMap<KeyCode, KeyState>,
-    mouse_buttons: HashMap<MouseButton, KeyState>,
+    mouse_buttons: HashMap<ButtonCode, KeyState>,
     mouse_position: Vector2<f32>,
     mouse_delta: Vector2<f32>,
-    first_frame: bool,
 }
 
 impl Default for Inputs{
@@ -27,15 +27,14 @@ impl Default for Inputs{
             map.insert(KeyCode::from_key(key), KeyState::Up);
         }
         let mut mouse_map = HashMap::new();
-        mouse_map.insert(MouseButton::Left, KeyState::Up);
-        mouse_map.insert(MouseButton::Right, KeyState::Up);
-        mouse_map.insert(MouseButton::Middle, KeyState::Up);
+        mouse_map.insert(ButtonCode::MB0, KeyState::Up);
+        mouse_map.insert(ButtonCode::MB1, KeyState::Up);
+        mouse_map.insert(ButtonCode::MB2, KeyState::Up);
         Inputs{
             keys: map,
             mouse_buttons: mouse_map,
             mouse_position: Vector2::<f32>::new(0.0, 0.0),
             mouse_delta: Vector2::<f32>::new(0.0, 0.0),
-            first_frame: true
         }
     }
 }
@@ -45,7 +44,7 @@ impl Inputs{
         self.keys.get(key_code).unwrap()
     }
 
-    pub fn get_mouse_button(&self, mouse_botton: &MouseButton) -> &KeyState{
+    pub fn get_button(&self, mouse_botton: &ButtonCode) -> &KeyState{
         match self.mouse_buttons.get(mouse_botton){
             None => &KeyState::Unpressed,
             Some(item) => item,
@@ -62,19 +61,22 @@ impl Inputs{
 }
 
 pub struct InputSystem{
-    input_queue: Arc<Mutex<Vec<ApplicationEvent>>>,
+    window_input_queue: Arc<Mutex<Vec<ApplicationEvent>>>,
+    hardware_input_queue: Arc<Mutex<Vec<DeviceEvent>>>,
 }
 
 impl InputSystem{
-    pub fn new(input_queue: Arc<Mutex<Vec<ApplicationEvent>>>) -> Self{
-        InputSystem{input_queue}
+    pub fn new(window_input_queue: Arc<Mutex<Vec<ApplicationEvent>>>, hardware_input_queue: Arc<Mutex<Vec<DeviceEvent>>>) -> Self{
+        InputSystem{window_input_queue, hardware_input_queue}
     }
 }
 
 impl<'a> System<'a> for InputSystem{
-    type SystemData = (Write<'a, Inputs>);
+    type SystemData = (
+        Write<'a, Inputs>,
+        Write<'a, CursorState>);
 
-    fn run(&mut self, mut inputs: Self::SystemData){
+    fn run(&mut self, (mut inputs, mut cursor): Self::SystemData){
 
         //Update keyboard inputs
         for (key_code, key_state) in inputs.keys.iter_mut(){
@@ -95,37 +97,48 @@ impl<'a> System<'a> for InputSystem{
         }
 
         //Get new inputs
-        for input in self.input_queue.lock().unwrap().drain(..){
+        for input in self.window_input_queue.lock().unwrap().drain(..){
             match input{
-                ApplicationEvent::KeyboardInput {device_id, input, is_synthetic} => {
-                    match inputs.keys.entry(KeyCode::from_key(input.scancode)){
-                        Entry::Occupied(mut e) => {
-                            e.insert(if input.state == ElementState::Pressed {KeyState::Pressed}  else {KeyState::Unpressed});
-                        },
-                        _ => {println!("{}", input.scancode)},
-                    } ;
-                },
-                ApplicationEvent::MouseInput {device_id, state, button, modifiers} =>{
-                    match inputs.mouse_buttons.entry(button){
-                        Entry::Occupied(mut e) => {
-                            e.insert(if state == ElementState::Pressed {KeyState::Pressed}  else {KeyState::Unpressed});
-                        },
-                        Entry::Vacant(mut e) => {
-                            e.insert(if state == ElementState::Pressed {KeyState::Pressed}  else {KeyState::Unpressed});
-                        }
-                    }
-                },
                 ApplicationEvent::CursorMoved {device_id, position, modifiers} =>{
-                    let position_hold = inputs.mouse_position.clone();
                     inputs.mouse_position = Vector2::new(position.x as f32, position.y as f32);
-                    if inputs.first_frame{
-                        inputs.mouse_delta = Vector2::new(0.0, 0.0);
-                        inputs.first_frame = false;
-                    } else {
-                        inputs.mouse_delta = &inputs.mouse_position - position_hold;
-                    }
+                }
+                ApplicationEvent::Focused(focused) => {
+                    cursor.locked = focused;
                 }
                 _ => {},
+            }
+        }
+
+        //Needs to be set to 0 because not every frame will have a delta
+        inputs.mouse_delta = Vector2::new(0.0, 0.0);
+
+        //Get hardware inputs
+        for input in self.hardware_input_queue.lock().unwrap().drain(..){
+            if cursor.locked{
+                match input{
+                    DeviceEvent::Key(key) =>{
+                        match inputs.keys.entry(KeyCode::from_key(key.scancode)){
+                            Entry::Occupied(mut e) => {
+                                e.insert(if key.state == ElementState::Pressed {KeyState::Pressed}  else {KeyState::Unpressed});
+                            },
+                            _ => {println!("{}", key.scancode)},
+                        } ;
+                    },
+                    DeviceEvent::Button {button, state} =>{
+                        match inputs.mouse_buttons.entry(ButtonCode::from_key(button)){
+                            Entry::Occupied(mut e) => {
+                                e.insert(if state == ElementState::Pressed {KeyState::Pressed}  else {KeyState::Unpressed});
+                            },
+                            Entry::Vacant(mut e) => {
+                                e.insert(if state == ElementState::Pressed {KeyState::Pressed}  else {KeyState::Unpressed});
+                            }
+                        }
+                    },
+                        DeviceEvent::MouseMotion {delta} => {
+                        inputs.mouse_delta = Vector2::new(delta.0 as f32, delta.1 as f32);
+                    },
+                    _ => {},
+                }
             }
         }
     }
@@ -203,6 +216,54 @@ impl KeyCode{
         match KeyCode::from_u32(key){
             Some(code) => code,
             None => KeyCode::Undefined
+        }
+    }
+}
+
+pub struct CursorState{
+    pub visible: bool,
+    pub locked: bool,
+}
+
+impl Default for CursorState{
+    fn default() -> Self{
+        CursorState{
+            visible: false,
+            locked: true,
+        }
+    }
+}
+
+pub struct CursorLockSystem{}
+
+impl<'a> System<'a> for CursorLockSystem{
+    type SystemData = (
+        Read<'a, CursorState>,
+        Write<'a, WindowDisplay>);
+
+    fn run(&mut self, (cursor_state, window_display): Self::SystemData){
+        let window_display = window_display.as_ref().unwrap().lock().unwrap();
+        let window_size = window_display.gl_window().window().inner_size();
+        if cursor_state.locked{
+            window_display.gl_window().window().set_cursor_grab(true);
+        }
+        window_display.gl_window().window().set_cursor_visible(cursor_state.visible);
+    }
+}
+
+#[derive(Display, FromPrimitive, PartialEq, Eq, Hash)]
+pub enum ButtonCode{
+    MB0 = 0,
+    MB1,
+    MB2,
+    Undefined,
+}
+
+impl ButtonCode{
+    pub fn from_key(key: u32) -> ButtonCode{
+        match ButtonCode::from_u32(key){
+            Some(code) => code,
+            None => ButtonCode::Undefined
         }
     }
 }

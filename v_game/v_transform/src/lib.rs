@@ -5,6 +5,7 @@ use std::ops::Index;
 use nalgebra_glm as glm;
 use glm::{translation, scaling, rotation};
 use nalgebra_glm::{TVec3, RealField, look_at};
+use nalgebra::{UnitQuaternion, Unit};
 
 pub struct Position(Vector3<f32>, bool);
 
@@ -33,7 +34,7 @@ impl Index<usize> for Position{
     }
 }
 
-pub struct Rotation(Matrix4<f32>, bool);
+pub struct Rotation(UnitQuaternion<f32>, bool);
 
 impl Component for Rotation{
     type Storage = DenseVecStorage<Self>;
@@ -42,26 +43,26 @@ impl Component for Rotation{
 impl Rotation{
     pub fn new() ->Self{
         Rotation{
-            0: Matrix4::identity(),
+            0: UnitQuaternion::from_axis_angle(&Unit::new_normalize(Vector3::new(0.0, 1.0, 0.0)), 0.0),
             1: true
         }
     }
 
-    pub fn apply_axis_angle_rotation(&mut self, angle: f32, v: &TVec3<f32>){
-        self.0 = &self.0 * rotation(angle, v);
+    pub fn apply_axis_angle_rotation(&mut self, angle: f32, axis: TVec3<f32>){
+        self.0 = UnitQuaternion::from_axis_angle(&Unit::new_normalize(axis), angle) * &self.0;
         self.1 = true;
     }
 
     pub fn forward(&self) -> Vector3<f32>{
-        (&self.0 * Vector4::new(0.0, 0.0, 1.0, 0.0)).xyz()
+        (&self.0 * Vector3::new(0.0, 0.0, 1.0)).xyz()
     }
 
     pub fn right(&self) -> Vector3<f32>{
-        (&self.0 * Vector4::new(1.0, 0.0, 0.0, 0.0)).xyz()
+        (&self.0 * Vector3::new(1.0, 0.0, 0.0)).xyz()
     }
 
     pub fn up(&self) -> Vector3<f32>{
-        (&self.0 * Vector4::new(0.0, 1.0, 0.0, 0.0)).xyz()
+        (&self.0 * Vector3::new(0.0, 1.0, 0.0)).xyz()
     }
 }
 
@@ -88,23 +89,26 @@ impl Index<usize> for Scale{
 pub fn model_matrix_psr(position: &Position, scale: &Scale, rotation: &Rotation) -> Matrix4<f32>{
     let position = model_matrix_p(position);
     let scale = model_matrix_s(scale);
-    &rotation.0 * scale * position
+    let rotation = model_matrix_r(rotation);
+    position * rotation * scale
 }
 
 pub fn model_matrix_pr(position: &Position, rotation: &Rotation) -> Matrix4<f32>{
     let position = model_matrix_p(position);
-    &rotation.0  * position
+    let rotation = model_matrix_r(rotation);
+    position * rotation
 }
 
 pub fn model_matrix_ps(position: &Position, scale: &Scale) -> Matrix4<f32>{
     let position = model_matrix_p(position);
     let scale = model_matrix_s(scale);
-    scale * position
+    position * scale
 }
 
 pub fn model_matrix_sr(rotation: &Rotation, scale: &Scale) -> Matrix4<f32>{
     let scale = scaling(&scale.0);
-    &rotation.0 * scale
+    let rotation = model_matrix_r(rotation);
+    scale * rotation
 }
 
 pub fn model_matrix_p(position: &Position) -> Matrix4<f32>{
@@ -114,6 +118,8 @@ pub fn model_matrix_p(position: &Position) -> Matrix4<f32>{
 pub fn model_matrix_s(scale: &Scale) -> Matrix4<f32>{
     scaling(&scale.0)
 }
+
+pub fn model_matrix_r(rotation: &Rotation) -> Matrix4<f32>{Matrix4::from(rotation.0.to_rotation_matrix())}
 
 pub struct TransformMatrix(Matrix4<f32>);
 
@@ -185,7 +191,7 @@ impl<'a> System<'a> for TransformSystem{
         }
 
         for ((), (), rotation, transform) in (!&positions, !&scales, &mut rotations, &mut transforms).join(){
-            transform.0 = rotation.0;
+            transform.0 = model_matrix_r(rotation);
             rotation.1 = false;
         }
     }

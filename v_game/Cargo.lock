@@ -1255,6 +1255,7 @@ dependencies = [
  "v_inputs",
  "v_renderer",
  "v_transform",
+ "v_voxels",
  "v_windowing",
 ]
 
@@ -1281,8 +1282,13 @@ dependencies = [
  "nalgebra",
  "nalgebra-glm",
  "specs",
+ "v_transform",
  "v_windowing",
 ]
+
+[[package]]
+name = "v_rle"
+version = "0.1.0"
 
 [[package]]
 name = "v_transform"
@@ -1291,6 +1297,17 @@ dependencies = [
  "nalgebra",
  "nalgebra-glm",
  "specs",
+]
+
+[[package]]
+name = "v_voxels"
+version = "0.1.0"
+dependencies = [
+ "nalgebra",
+ "specs",
+ "v_renderer",
+ "v_rle",
+ "v_transform",
 ]
 
 [[package]]

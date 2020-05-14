@@ -6,6 +6,8 @@ use glium::backend::Facade;
 use glium::index::PrimitiveType;
 use nalgebra::Matrix4;
 use nalgebra_glm::perspective;
+use v_windowing::WindowDisplay;
+use v_transform::*;
 
 #[derive(Copy, Clone)]
 pub struct VoxelVertex{
@@ -48,11 +50,6 @@ impl<V> Component for MeshRenderer<V>
     type Storage = VecStorage<Self>;
 }
 
-pub fn VoxelProgram(display: &Display) -> Program{
-    glium::Program::from_source(display, include_str!("../../src/shaders/base_vertex.glsl"), include_str!("../../src/shaders/base_frag.glsl"), None).unwrap()
-}
-
-
 pub struct Camera{
     pub fov: f32,
     pub znear: f32,
@@ -71,4 +68,56 @@ impl Camera{
 
 impl Component for Camera{
     type Storage = HashMapStorage<Self>;
+}
+
+pub struct VoxelRenderingSystem{
+    program: Program
+}
+
+impl VoxelRenderingSystem{
+    pub fn new(display: &Display) -> Self{
+        VoxelRenderingSystem{
+            program:  glium::Program::from_source(display, include_str!("../../src/shaders/base_vertex.glsl"), include_str!("../../src/shaders/base_frag.glsl"), None).unwrap()
+        }
+    }
+}
+
+impl<'a> System<'a> for VoxelRenderingSystem{
+    type SystemData = (
+    Write<'a, WindowDisplay>,
+    ReadStorage<'a, MeshRenderer<VoxelVertex>>,
+    ReadStorage<'a, TransformMatrix>,
+    ReadStorage<'a, Camera>);
+
+    fn run(&mut self, (mut window, voxel_meshes, transforms, cameras): Self::SystemData){
+        let display = window.as_ref().unwrap().lock().unwrap();
+        let mut frame = display.draw();
+
+
+        //Clear the frame color and depth
+        frame.clear_color_and_depth((0.0, 0.0, 0.0, 1.0), 1.0);
+
+        //Create the draw params
+        let params = glium::DrawParameters {
+            depth: glium::Depth {
+                test: glium::DepthTest::IfLess,
+                write: true,
+                .. Default::default()
+            },
+            backface_culling: glium::draw_parameters::BackfaceCullingMode::CullClockwise,
+            .. Default::default()
+        };
+
+        //Draw the meshes
+        for(camera, cam_transform) in (&cameras, &transforms).join() {
+            let vp = camera.perspective_matrix(&frame) * cam_transform.view_matrix();
+            for (voxel_mesh, transform) in (&voxel_meshes, &transforms).join() {
+                let mvp = (vp * transform.matrix());
+                let mesh_buffer = voxel_mesh.mesh.lock().unwrap();
+                frame.draw(&mesh_buffer.vertex_buffer, &mesh_buffer.index_buffer, &self.program, &uniform!(mvp: mvp.as_ref().clone()), &params);
+            }
+        }
+
+        frame.finish();
+    }
 }

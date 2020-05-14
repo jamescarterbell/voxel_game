@@ -4,13 +4,16 @@ use glutin::event::*;
 use std::sync::{Arc, Mutex};
 use std::path::PathBuf;
 use glutin::window::Theme;
+use glutin::window::Window;
 use glium::debug::Source::Application;
 use glutin::dpi::{PhysicalSize, PhysicalPosition};
+use std::ops::{Deref, DerefMut};
 
 pub struct GliumState{
     pub event_loop: EventLoop<()>,
-    pub display: glium::Display,
-    pub inputs: Arc<Mutex<Vec<ApplicationEvent>>>,
+    pub display: WindowDisplay,
+    pub window_inputs: Arc<Mutex<Vec<ApplicationEvent>>>,
+    pub hardware_inputs: Arc<Mutex<Vec<DeviceEvent>>>,
 }
 
 /// Contains all state used by renderer, also used for creating pipelines
@@ -20,18 +23,20 @@ impl GliumState{
         let event_loop = glutin::event_loop::EventLoop::new();
         let wb = glutin::window::WindowBuilder::new();
         let cb = glutin::ContextBuilder::new().with_depth_buffer(24);
-        let display = glium::Display::new(wb, cb, &event_loop).unwrap();
-        let inputs = Arc::new(Mutex::new(Vec::new()));
+        let display = WindowDisplay{0:Arc::new(Some(Mutex::new(glium::Display::new(wb, cb, &event_loop).unwrap())))};
+        let window_inputs = Arc::new(Mutex::new(Vec::new()));
+        let hardware_inputs = Arc::new(Mutex::new(Vec::new()));
 
         Self{
             event_loop,
             display,
-            inputs
+            window_inputs,
+            hardware_inputs
         }
     }
 
-    pub fn input_queue(&self) -> Arc<Mutex<Vec<ApplicationEvent>>>{
-        self.inputs.clone()
+    pub fn input_queues(&self) -> (Arc<Mutex<Vec<ApplicationEvent>>>, Arc<Mutex<Vec<DeviceEvent>>>){
+        (self.window_inputs.clone(), self.hardware_inputs.clone())
     }
 
     /// This will start the update loop of your game/program
@@ -43,11 +48,12 @@ impl GliumState{
         //TODO: fix destructuring maybe?
 
         let mut display = self.display;
-        let inputs = self.inputs;
+        let window_inputs = self.window_inputs;
+        let hardware_inputs = self.hardware_inputs;
         self.event_loop.run(move |e, _, flow|{
-            // Poll window events for inputs
+            // Poll window events for window_inputs
             match e{
-                glutin::event::Event::WindowEvent{event, ..} => {
+                Event::WindowEvent{event, ..} => {
                     match event {
                         glutin::event::WindowEvent::CloseRequested => {
                             *flow = glutin::event_loop::ControlFlow::Exit;
@@ -55,22 +61,43 @@ impl GliumState{
                         },
                         _ => *flow = glutin::event_loop::ControlFlow::Poll,
                     }
-                    inputs.lock().unwrap().push(ApplicationEvent::from(event));
+                    window_inputs.lock().unwrap().push(ApplicationEvent::from(event));
+                },
+                Event::DeviceEvent{device_id, event} =>{
+                    hardware_inputs.lock().unwrap().push(event);
                 },
                 Event::MainEventsCleared => {
                     // Do logic
                     *flow = glutin::event_loop::ControlFlow::Poll;
 
                     game.game_loop();
-
-                    game.render_loop(&mut display);
-
                     return;
                 },
                 _ => *flow = glutin::event_loop::ControlFlow::Poll,
             }
             return;
         });
+    }
+}
+
+#[derive(Clone)]
+pub struct WindowDisplay(Arc<Option<Mutex<glium::Display>>>);
+
+unsafe impl Send for WindowDisplay{}
+unsafe impl Sync for WindowDisplay{}
+
+impl Deref for WindowDisplay{
+    type Target = Option<Mutex<Display>>;
+
+    ///Due to shared mutable state underlying display, this can stall or halt
+    fn deref(&self) -> &Self::Target{
+        self.0.deref()
+    }
+}
+
+impl Default for WindowDisplay{
+    fn default() -> Self{
+        WindowDisplay{0: Arc::new(None)}
     }
 }
 
@@ -161,7 +188,6 @@ impl From<WindowEvent<'_>> for ApplicationEvent{
 
 pub trait GameState{
     fn game_loop(&mut self);
-    fn render_loop(&mut self, display: &mut Display) -> Result<(), GliumError>;
 }
 
 pub enum GliumError{
