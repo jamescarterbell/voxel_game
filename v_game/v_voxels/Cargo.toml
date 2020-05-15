@@ -12,3 +12,5 @@ v_renderer = {path="../v_renderer"}
 specs = "0.16.1"
 nalgebra = "0.21.0"
 v_rle = {path="../v_rle"}
+dashmap = "3.11.1"
+noise = "0.6.0"

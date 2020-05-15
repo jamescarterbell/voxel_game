@@ -8,6 +8,7 @@ use nalgebra::Matrix4;
 use nalgebra_glm::perspective;
 use v_windowing::WindowDisplay;
 use v_transform::*;
+pub use glium::{VertexBuffer, IndexBuffer};
 
 #[derive(Copy, Clone)]
 pub struct VoxelVertex{
