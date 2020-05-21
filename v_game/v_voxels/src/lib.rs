@@ -1,19 +1,29 @@
 use v_transform::*;
+use v_rle::*;
 use v_renderer::*;
+use v_windowing::*;
+
+use v_renderer::index::PrimitiveType;
+
 use nalgebra as na;
-use na::Vector3;
+use na::{Vector3, Vector2};
 use specs::prelude::*;
 use specs::ParJoin;
-use v_rle::*;
-use std::iter::repeat;
 use dashmap::*;
 use dashmap::mapref::one::Ref;
-use v_renderer::*;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use nalgebra::{Matrix, U1};
+use std::collections::HashSet;
+use std::ops::{Deref};
+use std::sync::mpsc::{channel, TryRecvError, Sender};
+use rayon::prelude::*;
+use std::thread;
+use specs::world::EntitiesRes;
+
+use rand::*;
 
 const BLOCK_SIZE: f32 = 0.5;
-const CHUNK_SIZE: usize = 32;
+const CHUNK_SIZE: usize = 16;
 const CHUNK_SIZE_2: usize = CHUNK_SIZE * CHUNK_SIZE;
 const CHUNK_SIZE_3: usize = CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE;
 
@@ -25,13 +35,23 @@ pub enum BlockType{
     Rock,
 }
 
+impl BlockType{
+    pub fn is_transparent(&self) -> bool{
+        match self{
+            BlockType::Air => true,
+            BlockType::Dynamic => true,
+            _ => false,
+        }
+    }
+}
+
 pub struct Chunk{
     blocks: RLE<BlockType>
 }
 
 impl Chunk{
     pub fn new() -> Self{
-        let rle : RLE<BlockType> = RLE::from(repeat(BlockType::Air).cycle().take(CHUNK_SIZE_3));
+        let rle : RLE<BlockType> = RLE::from(std::iter::repeat(BlockType::Air).cycle().take(CHUNK_SIZE_3));
         Chunk {
             blocks : rle,
         }
@@ -62,48 +82,82 @@ pub enum VoxelError{
 
 pub struct ChunkStorage{
     map: DashMap<Vector3<i32>, Chunk>,
+    needed_chunks: Arc<Mutex<Vec<Vector3<i32>>>>,
+    changed_chunks: HashSet<Vector3<i32>>
 }
 
 impl ChunkStorage{
     pub fn new() -> Self{
         Self{
             map: DashMap::new(),
+            needed_chunks: Arc::new(Mutex::new(vec![])),
+            changed_chunks: HashSet::new(),
         }
     }
 
-    pub fn get_chunk(&self, place: Vector3<i32>) -> Option<Ref<Vector3<i32>, Chunk>>{
-        self.map.get(&place)
+    pub fn get_chunk(&self, place: Vector3<f32>) -> Option<Ref<Vector3<i32>, Chunk>>{
+        let chunk_coord = Vector3::new((place[0] as f32 / CHUNK_SIZE as f32 / BLOCK_SIZE).floor() as i32,
+                                       (place[1] as f32 / CHUNK_SIZE as f32 / BLOCK_SIZE).floor() as i32,
+                                       (place[2] as f32 / CHUNK_SIZE as f32 / BLOCK_SIZE).floor() as i32);
+        self.map.get(&chunk_coord)
     }
 
-    pub fn set_chunk(&mut self, place: Vector3<i32>, chunk: Chunk){
-        self.map.insert(place, chunk);
+    pub fn set_chunk(&mut self, place: Vector3<f32>, chunk: Chunk){
+        let chunk_coord = Vector3::new((place[0] as f32 / CHUNK_SIZE as f32 / BLOCK_SIZE).floor() as i32,
+                                       (place[1] as f32 / CHUNK_SIZE as f32 / BLOCK_SIZE).floor() as i32,
+                                       (place[2] as f32 / CHUNK_SIZE as f32 / BLOCK_SIZE).floor() as i32);
+        self.map.insert(chunk_coord, chunk);
     }
 
-    pub fn set_block(&mut self, block: &BlockType, place: &Vector3<i32>){
-        let chunk_coord = Vector3::new((place[0] as f32 / CHUNK_SIZE as f32).floor() as i32,
-                                 (place[1] as f32 / CHUNK_SIZE as f32).floor() as i32,
-                                 (place[2] as f32 / CHUNK_SIZE as f32).floor() as i32);
-        let block_coord = place - chunk_coord * CHUNK_SIZE as i32;
+    pub fn set_block(&mut self, block: &BlockType, place: &Vector3<f32>){
+        let chunk_coord = Vector3::new((place[0] as f32 / CHUNK_SIZE as f32 / BLOCK_SIZE).floor() as i32,
+                                 (place[1] as f32 / CHUNK_SIZE as f32 / BLOCK_SIZE).floor() as i32,
+                                 (place[2] as f32 / CHUNK_SIZE as f32 / BLOCK_SIZE).floor() as i32);
+        let chunk_coord_f32 = Vector3::new(chunk_coord[0] as f32, chunk_coord[1] as f32, chunk_coord[2] as f32);
+        let block_coord = place - chunk_coord_f32 * CHUNK_SIZE as f32 * BLOCK_SIZE;
         let mut chunk = match self.map.get_mut(&chunk_coord){
             Some(chunk) => chunk,
             None => {
                 self.map.insert(chunk_coord,Chunk::new());
+                self.needed_chunks.lock().unwrap().push(chunk_coord);
                 self.map.get_mut(&chunk_coord).unwrap()
             }
         };
         let block_coord = Vector3::new(block_coord[0] as usize, block_coord[1] as usize, block_coord[2] as usize);
+
+        if block_coord[0] == 0{
+            self.changed_chunks.insert(chunk_coord + Vector3::new(-1, 0, 0));
+        } else if block_coord[0] == CHUNK_SIZE{
+            self.changed_chunks.insert(chunk_coord + Vector3::new(1, 0, 0));
+        }
+
+        if block_coord[1] == 0{
+            self.changed_chunks.insert(chunk_coord + Vector3::new(0, -1, 0));
+        } else if block_coord[1] == CHUNK_SIZE{
+            self.changed_chunks.insert(chunk_coord + Vector3::new(0, 1, 0));
+        }
+
+        if block_coord[2] == 0{
+            self.changed_chunks.insert(chunk_coord + Vector3::new(0, 0, -1));
+        } else if block_coord[2] == CHUNK_SIZE{
+            self.changed_chunks.insert(chunk_coord + Vector3::new(0, 0, 1));
+        }
+
+        self.changed_chunks.insert(chunk_coord);
         chunk.set_block(block_coord, block);
     }
 
-    pub fn get_block(&self, place: &Vector3<i32>) -> BlockType{
-        let chunk_coord = Vector3::new((place[0] as f32 / CHUNK_SIZE as f32).floor() as i32,
-                                       (place[1] as f32 / CHUNK_SIZE as f32).floor() as i32,
-                                       (place[2] as f32 / CHUNK_SIZE as f32).floor() as i32);
-        let block_coord = place - chunk_coord * CHUNK_SIZE as i32;
+    pub fn get_block(&self, place: &Vector3<f32>) -> BlockType{
+        let chunk_coord = Vector3::new((place[0] as f32 / CHUNK_SIZE as f32 / BLOCK_SIZE).floor() as i32,
+                                       (place[1] as f32 / CHUNK_SIZE as f32 / BLOCK_SIZE).floor() as i32,
+                                       (place[2] as f32 / CHUNK_SIZE as f32 / BLOCK_SIZE).floor() as i32);
+        let chunk_coord_f32 = Vector3::new(chunk_coord[0] as f32, chunk_coord[1] as f32, chunk_coord[2] as f32);
+        let mut block_coord = place - chunk_coord_f32 * CHUNK_SIZE as f32 * BLOCK_SIZE;
         let mut chunk = match self.map.get_mut(&chunk_coord){
             Some(chunk) => chunk,
             None => {
                 self.map.insert(chunk_coord,Chunk::new());
+                self.needed_chunks.lock().unwrap().push(chunk_coord);
                 self.map.get_mut(&chunk_coord).unwrap()
             }
         };
@@ -120,6 +174,7 @@ impl Default for ChunkStorage{
 
 pub struct ChunkMarker{
     pub coords: Vector3<i32>,
+    pub renderable: bool,
     pub changed: bool,
 }
 
@@ -131,58 +186,397 @@ impl Default for ChunkMarker{
     fn default() -> Self{
         Self{
             coords: Vector3::new(0,0,0),
+            renderable: false,
             changed: false,
         }
     }
 }
 
-pub struct ChunkRenderer{
-    lods: Vec<(VertexBuffer<VoxelVertex>, IndexBuffer<u32>)>
+
+pub struct ChunkMesherSystem{}
+
+impl ChunkMesherSystem{
+    pub fn mesh_chunk(chunks: &ChunkStorage, marker: &mut ChunkMarker) -> (Vec<VoxelVertex>, Vec<u32>){
+
+        let dimension = (0..CHUNK_SIZE).into_par_iter();
+
+        let (sender, receiver):(Sender<Vec<VoxelVertex>>, std::sync::mpsc::Receiver<Vec<VoxelVertex>>) = channel();
+        let (mesh_finished_sender, mesh_finished_receiver) = channel();
+
+        let tri_thread = thread::spawn(move ||{
+            let mut final_verts = vec![];
+            let mut tris = vec![];
+            while mesh_finished_receiver.try_recv() == Err(TryRecvError::Empty) {
+                for mut verts in receiver.iter() {
+                    let tri_start = final_verts.len() as u32;
+                    let tri_count = verts.len() as u32 / 4;
+
+                    final_verts.append(&mut verts);
+
+
+                    for tri in 0..tri_count {
+                        tris.push(tri_start + 4 * tri + 0);
+                        tris.push(tri_start + 4 * tri + 1);
+                        tris.push(tri_start + 4 * tri + 2);
+                        tris.push(tri_start + 4 * tri + 2);
+                        tris.push(tri_start + 4 * tri + 3);
+                        tris.push(tri_start + 4 * tri + 0);
+                    }
+                }
+            }
+            (final_verts, tris)
+        });
+
+        dimension
+            .for_each_with(sender,
+                |sender, (block_x)| {
+
+                    let mut verts = vec![];
+
+                    for block_y in 0..CHUNK_SIZE{
+                        for block_z in 0..CHUNK_SIZE{
+                            let block_coord = Vector3::new(block_x as f32, block_y as f32, block_z as f32) * BLOCK_SIZE
+                                            + Vector3::new(marker.coords[0] as f32, marker.coords[1] as f32, marker.coords[2] as f32) * CHUNK_SIZE as f32 * BLOCK_SIZE;
+                            let block = chunks.get_block(&block_coord);
+                            if block == BlockType::Air { continue }
+
+                            let top_block = chunks.get_block(&(block_coord + Vector3::new(0.0, 1.0, 0.0) * BLOCK_SIZE));
+                            if top_block.is_transparent() {
+                                verts.push(VoxelVertex::new(
+                                    Vector3::new(
+                                        block_x as f32 * BLOCK_SIZE + BLOCK_SIZE / 2.0,
+                                        block_y as f32 * BLOCK_SIZE + BLOCK_SIZE / 2.0,
+                                        block_z as f32 * BLOCK_SIZE + BLOCK_SIZE / 2.0),
+                                    Vector2::new(
+                                        1.0, 1.0
+                                    ),
+                                    1
+                                ));
+                                verts.push(VoxelVertex::new(
+                                    Vector3::new(
+                                        block_x as f32 * BLOCK_SIZE + BLOCK_SIZE / 2.0,
+                                        block_y as f32 * BLOCK_SIZE + BLOCK_SIZE / 2.0,
+                                        block_z as f32 * BLOCK_SIZE - BLOCK_SIZE / 2.0),
+                                    Vector2::new(
+                                        1.0, 0.0
+                                    ),
+                                    1
+                                ));
+                                verts.push(VoxelVertex::new(
+                                    Vector3::new(
+                                        block_x as f32 * BLOCK_SIZE - BLOCK_SIZE / 2.0,
+                                        block_y as f32 * BLOCK_SIZE + BLOCK_SIZE / 2.0,
+                                        block_z as f32 * BLOCK_SIZE - BLOCK_SIZE / 2.0),
+                                    Vector2::new(
+                                        0.0, 0.0
+                                    ),
+                                    1
+                                ));
+                                verts.push(VoxelVertex::new(
+                                    Vector3::new(
+                                        block_x as f32 * BLOCK_SIZE - BLOCK_SIZE / 2.0,
+                                        block_y as f32 * BLOCK_SIZE + BLOCK_SIZE / 2.0,
+                                        block_z as f32 * BLOCK_SIZE + BLOCK_SIZE / 2.0),
+                                    Vector2::new(
+                                        0.0, 1.0
+                                    ),
+                                    1
+                                ));
+                            }
+
+
+                            let bottom_block = chunks.get_block(&(block_coord + Vector3::new(0.0, -1.0, 0.0) * BLOCK_SIZE));
+                            if bottom_block.is_transparent() {
+                                verts.push(VoxelVertex::new(
+                                    Vector3::new(
+                                        block_x as f32 * BLOCK_SIZE + BLOCK_SIZE / 2.0,
+                                        block_y as f32 * BLOCK_SIZE - BLOCK_SIZE / 2.0,
+                                        block_z as f32 * BLOCK_SIZE + BLOCK_SIZE / 2.0),
+                                    Vector2::new(
+                                        1.0, 1.0
+                                    ),
+                                    1
+                                ));
+                                verts.push(VoxelVertex::new(
+                                    Vector3::new(
+                                        block_x as f32 * BLOCK_SIZE - BLOCK_SIZE / 2.0,
+                                        block_y as f32 * BLOCK_SIZE - BLOCK_SIZE / 2.0,
+                                        block_z as f32 * BLOCK_SIZE + BLOCK_SIZE / 2.0),
+                                    Vector2::new(
+                                        1.0, 0.0
+                                    ),
+                                    1
+                                ));
+                                verts.push(VoxelVertex::new(
+                                    Vector3::new(
+                                        block_x as f32 * BLOCK_SIZE - BLOCK_SIZE / 2.0,
+                                        block_y as f32 * BLOCK_SIZE - BLOCK_SIZE / 2.0,
+                                        block_z as f32 * BLOCK_SIZE - BLOCK_SIZE / 2.0),
+                                    Vector2::new(
+                                        0.0, 0.0
+                                    ),
+                                    1
+                                ));
+                                verts.push(VoxelVertex::new(
+                                    Vector3::new(
+                                        block_x as f32 * BLOCK_SIZE + BLOCK_SIZE / 2.0,
+                                        block_y as f32 * BLOCK_SIZE - BLOCK_SIZE / 2.0,
+                                        block_z as f32 * BLOCK_SIZE - BLOCK_SIZE / 2.0),
+                                    Vector2::new(
+                                        0.0, 1.0
+                                    ),
+                                    1
+                                ));
+                            }
+
+
+                            let right_block = chunks.get_block(&(block_coord + Vector3::new(1.0, 0.0, 0.0) * BLOCK_SIZE));
+                            if right_block.is_transparent() {
+                                verts.push(VoxelVertex::new(
+                                    Vector3::new(
+                                        block_x as f32 * BLOCK_SIZE + BLOCK_SIZE / 2.0,
+                                        block_y as f32 * BLOCK_SIZE + BLOCK_SIZE / 2.0,
+                                        block_z as f32 * BLOCK_SIZE + BLOCK_SIZE / 2.0),
+                                    Vector2::new(
+                                        1.0, 1.0
+                                    ),
+                                    1
+                                ));
+                                verts.push(VoxelVertex::new(
+                                    Vector3::new(
+                                        block_x as f32 * BLOCK_SIZE + BLOCK_SIZE / 2.0,
+                                        block_y as f32 * BLOCK_SIZE - BLOCK_SIZE / 2.0,
+                                        block_z as f32 * BLOCK_SIZE + BLOCK_SIZE / 2.0),
+                                    Vector2::new(
+                                        1.0, 0.0
+                                    ),
+                                    1
+                                ));
+                                verts.push(VoxelVertex::new(
+                                    Vector3::new(
+                                        block_x as f32 * BLOCK_SIZE + BLOCK_SIZE / 2.0,
+                                        block_y as f32 * BLOCK_SIZE - BLOCK_SIZE / 2.0,
+                                        block_z as f32 * BLOCK_SIZE - BLOCK_SIZE / 2.0),
+                                    Vector2::new(
+                                        0.0, 0.0
+                                    ),
+                                    1
+                                ));
+                                verts.push(VoxelVertex::new(
+                                    Vector3::new(
+                                        block_x as f32 * BLOCK_SIZE + BLOCK_SIZE / 2.0,
+                                        block_y as f32 * BLOCK_SIZE + BLOCK_SIZE / 2.0,
+                                        block_z as f32 * BLOCK_SIZE - BLOCK_SIZE / 2.0),
+                                    Vector2::new(
+                                        0.0, 1.0
+                                    ),
+                                    1
+                                ));
+                            }
+
+                            let left_block = chunks.get_block(&(block_coord + Vector3::new(-1.0, 0.0, 0.0) * BLOCK_SIZE));
+                            if left_block.is_transparent() {
+                                verts.push(VoxelVertex::new(
+                                    Vector3::new(
+                                        block_x as f32 * BLOCK_SIZE - BLOCK_SIZE / 2.0,
+                                        block_y as f32 * BLOCK_SIZE - BLOCK_SIZE / 2.0,
+                                        block_z as f32 * BLOCK_SIZE - BLOCK_SIZE / 2.0),
+                                    Vector2::new(
+                                        1.0, 1.0
+                                    ),
+                                    1
+                                ));
+                                verts.push(VoxelVertex::new(
+                                    Vector3::new(
+                                        block_x as f32 * BLOCK_SIZE - BLOCK_SIZE / 2.0,
+                                        block_y as f32 * BLOCK_SIZE - BLOCK_SIZE / 2.0,
+                                        block_z as f32 * BLOCK_SIZE + BLOCK_SIZE / 2.0),
+                                    Vector2::new(
+                                        1.0, 0.0
+                                    ),
+                                    1
+                                ));
+                                verts.push(VoxelVertex::new(
+                                    Vector3::new(
+                                        block_x as f32 * BLOCK_SIZE - BLOCK_SIZE / 2.0,
+                                        block_y as f32 * BLOCK_SIZE + BLOCK_SIZE / 2.0,
+                                        block_z as f32 * BLOCK_SIZE + BLOCK_SIZE / 2.0),
+                                    Vector2::new(
+                                        0.0, 0.0
+                                    ),
+                                    1
+                                ));
+                                verts.push(VoxelVertex::new(
+                                    Vector3::new(
+                                        block_x as f32 * BLOCK_SIZE - BLOCK_SIZE / 2.0,
+                                        block_y as f32 * BLOCK_SIZE + BLOCK_SIZE / 2.0,
+                                        block_z as f32 * BLOCK_SIZE - BLOCK_SIZE / 2.0),
+                                    Vector2::new(
+                                        0.0, 1.0
+                                    ),
+                                    1
+                                ));
+                            }
+
+
+                            let front_block = chunks.get_block(&(block_coord + Vector3::new(0.0, 0.0, 1.0) * BLOCK_SIZE));
+                            if front_block.is_transparent() {
+                                verts.push(VoxelVertex::new(
+                                    Vector3::new(
+                                        block_x as f32 * BLOCK_SIZE + BLOCK_SIZE / 2.0,
+                                        block_y as f32 * BLOCK_SIZE + BLOCK_SIZE / 2.0,
+                                        block_z as f32 * BLOCK_SIZE + BLOCK_SIZE / 2.0),
+                                    Vector2::new(
+                                        1.0, 1.0
+                                    ),
+                                    1
+                                ));
+                                verts.push(VoxelVertex::new(
+                                    Vector3::new(
+                                        block_x as f32 * BLOCK_SIZE - BLOCK_SIZE / 2.0,
+                                        block_y as f32 * BLOCK_SIZE + BLOCK_SIZE / 2.0,
+                                        block_z as f32 * BLOCK_SIZE + BLOCK_SIZE / 2.0),
+                                    Vector2::new(
+                                        1.0, 0.0
+                                    ),
+                                    1
+                                ));
+                                verts.push(VoxelVertex::new(
+                                    Vector3::new(
+                                        block_x as f32 * BLOCK_SIZE - BLOCK_SIZE / 2.0,
+                                        block_y as f32 * BLOCK_SIZE - BLOCK_SIZE / 2.0,
+                                        block_z as f32 * BLOCK_SIZE + BLOCK_SIZE / 2.0),
+                                    Vector2::new(
+                                        0.0, 0.0
+                                    ),
+                                    1
+                                ));
+                                verts.push(VoxelVertex::new(
+                                    Vector3::new(
+                                        block_x as f32 * BLOCK_SIZE + BLOCK_SIZE / 2.0,
+                                        block_y as f32 * BLOCK_SIZE - BLOCK_SIZE / 2.0,
+                                        block_z as f32 * BLOCK_SIZE + BLOCK_SIZE / 2.0),
+                                    Vector2::new(
+                                        0.0, 1.0
+                                    ),
+                                    1
+                                ));
+                            }
+
+                            let back_block = chunks.get_block(&(block_coord + Vector3::new(0.0, 0.0, -1.0) * BLOCK_SIZE));
+                            if back_block.is_transparent() {
+                                verts.push(VoxelVertex::new(
+                                    Vector3::new(
+                                        block_x as f32 * BLOCK_SIZE - BLOCK_SIZE / 2.0,
+                                        block_y as f32 * BLOCK_SIZE - BLOCK_SIZE / 2.0,
+                                        block_z as f32 * BLOCK_SIZE - BLOCK_SIZE / 2.0),
+                                    Vector2::new(
+                                        1.0, 1.0
+                                    ),
+                                    1
+                                ));
+                                verts.push(VoxelVertex::new(
+                                    Vector3::new(
+                                        block_x as f32 * BLOCK_SIZE - BLOCK_SIZE / 2.0,
+                                        block_y as f32 * BLOCK_SIZE + BLOCK_SIZE / 2.0,
+                                        block_z as f32 * BLOCK_SIZE - BLOCK_SIZE / 2.0),
+                                    Vector2::new(
+                                        1.0, 0.0
+                                    ),
+                                    1
+                                ));
+                                verts.push(VoxelVertex::new(
+                                    Vector3::new(
+                                        block_x as f32 * BLOCK_SIZE + BLOCK_SIZE / 2.0,
+                                        block_y as f32 * BLOCK_SIZE + BLOCK_SIZE / 2.0,
+                                        block_z as f32 * BLOCK_SIZE - BLOCK_SIZE / 2.0),
+                                    Vector2::new(
+                                        0.0, 0.0
+                                    ),
+                                    1
+                                ));
+                                verts.push(VoxelVertex::new(
+                                    Vector3::new(
+                                        block_x as f32 * BLOCK_SIZE + BLOCK_SIZE / 2.0,
+                                        block_y as f32 * BLOCK_SIZE - BLOCK_SIZE / 2.0,
+                                        block_z as f32 * BLOCK_SIZE - BLOCK_SIZE / 2.0),
+                                    Vector2::new(
+                                        0.0, 1.0
+                                    ),
+                                    1
+                                ));
+                            }
+                        }
+                    }
+
+                    if !verts.is_empty() {
+                        sender.send(verts);
+                    }
+                });
+
+        mesh_finished_sender.send(true);
+        tri_thread.join().unwrap()
+    }
 }
 
-impl Component for ChunkRenderer{
-    type Storage = VecStorage<Self>;
-}
+impl<'a> System<'a> for ChunkMesherSystem{
+    type SystemData = (
+        Entities<'a>,
+        Read<'a, ChunkStorage>,
+        Read<'a, WindowDisplay>,
+        WriteStorage<'a, ChunkMarker>,
+        WriteStorage<'a, MeshRenderer<VoxelVertex>>
+    );
 
-unsafe impl Send for ChunkRenderer{}
-unsafe impl Sync for ChunkRenderer{}
+    fn run(&mut self, (entities, chunks, display, mut markers, mut renderers): Self::SystemData){
+        let (send, recieve) = channel();
+        (&mut markers, &entities).par_join().for_each_with(send, |sender, (marker, entity)|{
+                if !marker.changed || !marker.renderable{return;}
+                marker.changed = false;
 
-impl Default for ChunkRenderer{
-    fn default() -> Self{
-        Self{
-            lods: vec![],
+                let (verts, tris) = Self::mesh_chunk(chunks.deref(), marker);
+
+                sender.send((entity, verts, tris)).unwrap();
+        });
+
+        let display = display.as_ref().unwrap().lock().unwrap();
+        for (entity, verts, tris) in recieve.iter() {
+            let buffer = MeshBuffer::new(display.deref(), verts, tris);
+            renderers.insert(entity, MeshRenderer { mesh: Arc::new(Mutex::new(buffer)) });
         }
     }
 }
 
-pub struct ChunkMesherSystem{}
+pub struct NewChunkPlacementSystem{}
 
-impl<'a> System<'a> for ChunkMesherSystem{
+impl<'a> System<'a> for NewChunkPlacementSystem{
     type SystemData = (
-        Read<'a, ChunkStorage>,
+        Write<'a, ChunkStorage>,
+        Read<'a, EntitiesRes>,
         WriteStorage<'a, ChunkMarker>,
-        WriteStorage<'a, ChunkRenderer>
+        WriteStorage<'a, Position>,
+        WriteStorage<'a, TransformMatrix>,
+        Read<'a, LazyUpdate>
     );
 
-    fn run(&mut self, (chunks, mut markers, mut renderers): Self::SystemData){
-        (&mut markers, &mut renderers).par_join().for_each(
-            |(marker, renderer)|{
-                marker.changed = false;
+    fn run(&mut self, (mut chunks, entities, mut chunk_markers, mut positions, mut transforms, lazy): Self::SystemData){
+        if let Some(new_chunk_coord)  = chunks.needed_chunks.lock().unwrap().pop(){
+            lazy.create_entity(&entities)
+                .with(Position::new(new_chunk_coord[0] as f32 * CHUNK_SIZE as f32 * BLOCK_SIZE,
+                                    new_chunk_coord[1] as f32 * CHUNK_SIZE as f32 * BLOCK_SIZE,
+                                    new_chunk_coord[2] as f32 * CHUNK_SIZE as f32 * BLOCK_SIZE ))
+                .with(TransformMatrix::default())
+                .with(ChunkMarker{coords:new_chunk_coord, changed:true, renderable:true})
+                .build();
+        }
 
-                let chunk = chunks.get_chunk(marker.coords);
-                let chunk = chunk.unwrap().value();
-
-                let mut verts = vec![];
-                let mut tris = vec![];
-
-                for block_x in 0..CHUNK_SIZE{
-                    for block_y in 0..CHUNK_SIZE{
-                        for block_z in 0..CHUNK_SIZE{
-                            //TODO: CHUNK MESHING
-                        }
-                    }
+        if !chunks.changed_chunks.is_empty() {
+            for (chunk_marker) in (&mut chunk_markers).join() {
+                if chunks.changed_chunks.contains(&chunk_marker.coords) {
+                    chunk_marker.changed = true;
                 }
-
-        });
+                chunks.changed_chunks.remove(&chunk_marker.coords);
+            }
+        }
     }
 }

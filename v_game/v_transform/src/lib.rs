@@ -156,43 +156,57 @@ impl<'a> System<'a> for TransformSystem{
 
     fn run(&mut self, (mut positions, mut scales, mut rotations, mut transforms) : Self::SystemData){
         for (position, scale, rotation, transform) in (&mut positions, &mut scales, &mut rotations, &mut transforms).join(){
-            transform.0 = model_matrix_psr(position, scale, rotation);
-            position.1 = false;
-            scale.1 = false;
-            rotation.1 = false;
+            if position.1 || scale.1 || rotation.1 {
+                transform.0 = model_matrix_psr(position, scale, rotation);
+                position.1 = false;
+                scale.1 = false;
+                rotation.1 = false;
+            }
         }
 
         for (position, scale, transform, ()) in (&mut positions, &mut scales, &mut transforms, !&rotations).join(){
-            transform.0 = model_matrix_ps(position, scale);
-            position.1 = false;
-            scale.1 = false;
+            if position.1 || scale.1 {
+                transform.0 = model_matrix_ps(position, scale);
+                position.1 = false;
+                scale.1 = false;
+            }
         }
 
         for (position, rotation, transform, ()) in (&mut positions, &mut rotations, &mut transforms, !&scales).join(){
-            transform.0 = model_matrix_pr(position, rotation);
-            position.1 = false;
-            rotation.1 = false;
+            if position.1 || rotation.1 {
+                transform.0 = model_matrix_pr(position, rotation);
+                position.1 = false;
+                rotation.1 = false;
+            }
         }
 
         for (scale, rotation, transform, ()) in (&mut scales, &mut rotations, &mut transforms, !&positions).join(){
-            transform.0 = model_matrix_sr(rotation, scale);
-            scale.1 = false;
-            rotation.1 = false;
+            if scale.1 || rotation.1 {
+                transform.0 = model_matrix_sr(rotation, scale);
+                scale.1 = false;
+                rotation.1 = false;
+            }
         }
 
         for (position, (), (), transform) in (&mut positions, !&scales, !&rotations, &mut transforms).join(){
-            transform.0 = model_matrix_p(position);
-            position.1 = false;
+            if position.1 {
+                transform.0 = model_matrix_p(position);
+                position.1 = false;
+            }
         }
 
         for ((), scale, (), transform) in (!&positions, &mut scales, !&rotations, &mut transforms).join(){
-            transform.0 = model_matrix_s(scale);
-            scale.1 = false;
+            if scale.1 {
+                transform.0 = model_matrix_s(scale);
+                scale.1 = false;
+            }
         }
 
         for ((), (), rotation, transform) in (!&positions, !&scales, &mut rotations, &mut transforms).join(){
-            transform.0 = model_matrix_r(rotation);
-            rotation.1 = false;
+            if rotation.1 {
+                transform.0 = model_matrix_r(rotation);
+                rotation.1 = false;
+            }
         }
     }
 }

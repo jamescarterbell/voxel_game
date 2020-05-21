@@ -4,17 +4,27 @@ use nalgebra as na;
 use std::sync::{Arc, Mutex};
 use glium::backend::Facade;
 use glium::index::PrimitiveType;
-use nalgebra::Matrix4;
+use nalgebra::{Matrix4, Vector3, Vector2};
 use nalgebra_glm::perspective;
 use v_windowing::WindowDisplay;
 use v_transform::*;
-pub use glium::{VertexBuffer, IndexBuffer};
+pub use glium::*;
 
 #[derive(Copy, Clone)]
 pub struct VoxelVertex{
     pub position: [f32; 3],
     pub texcoords: [f32; 2],
     pub lighting: u32
+}
+
+impl VoxelVertex{
+    pub fn new(position: Vector3::<f32>, texcoord: Vector2::<f32>, lighting: u32) -> Self{
+        VoxelVertex{
+            position: [position[0], position[1], position[2]],
+            texcoords: [texcoord[0], texcoord[1]],
+            lighting
+        }
+    }
 }
 
 implement_vertex!(VoxelVertex, position, texcoords, lighting);
@@ -63,7 +73,7 @@ impl Camera{
         let (width, height) = target.get_dimensions();
         let aspect_ratio = height as f32 / width as f32;
 
-        perspective(aspect_ratio, self.fov, self.znear, self.zfar)
+        perspective(1.0/aspect_ratio, self.fov, self.znear, self.zfar)
     }
 }
 

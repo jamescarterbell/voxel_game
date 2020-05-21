@@ -74,19 +74,15 @@ impl<T> RLE<T>
 
         let second_half = self.raw[target_index].0 - target_place - 1;
 
-        self.raw[target_index].0 = target_place;
-        if second_half > 0 {
-            self.raw.insert(target_index + 1, (second_half, self.raw[target_index].1.clone()));
-        }
-        self.raw.insert(target_index + 1, (1, item.clone()));
-        if self.raw[target_index].0 == 0{
-            self.raw.remove(target_index);
-        }
+        if self.raw[target_index].1 != *item {
+            self.raw[target_index].0 = target_place;
+            if second_half > 0 {
+                self.raw.insert(target_index + 1, (second_half, self.raw[target_index].1.clone()));
+            }
 
-        if target_index + 2 < self.raw.len(){
-            if self.raw[target_index + 2].1 == self.raw[target_index + 1].1{
-                self.raw[target_index + 1].0 += self.raw[target_index + 2].0;
-                self.raw.remove(target_index + 2);
+            self.raw.insert(target_index + 1, (1, item.clone()));
+            if self.raw[target_index].0 == 0 {
+                self.raw.remove(target_index);
             }
         }
 
@@ -97,6 +93,12 @@ impl<T> RLE<T>
             }
         }
 
+        if target_index > 1 && target_index < self.raw.len(){
+            if self.raw[target_index - 1].1 == self.raw[target_index].1{
+                self.raw[target_index].0 += self.raw[target_index - 1].0;
+                self.raw.remove(target_index - 1);
+            }
+        }
         Ok(())
     }
 
@@ -181,7 +183,5 @@ mod tests {
             }
         }
         ratio /= test_num as f32;
-        println!("{}", ratio);
-        println!("{}", longer as f32/ test_num as f32);
     }
 }

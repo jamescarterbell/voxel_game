@@ -8,7 +8,7 @@ use v_voxels::*;
 use std::sync::{Arc, Mutex};
 
 use nalgebra as na;
-use na::Matrix4;
+use na::{Matrix4, Vector3};
 
 use specs::prelude::*;
 
@@ -41,13 +41,16 @@ fn main() {
     world.register::<TransformMatrix>();
     world.register::<Camera>();
     world.register::<Player>();
+    world.register::<ChunkMarker>();
 
     world.insert(Inputs::default());
     world.insert(glium_state.display.clone());
     world.insert(CursorState::default());
+    world.insert(ChunkStorage::new());
 
     world.create_entity().with(Camera{fov: 1.57, znear: 0.001, zfar: 4096.0}).with(Position::new(0.0, 0.0, 0.0)).with(Rotation::new()).with(Player{}).with(TransformMatrix::default()).build();
     world.create_entity().with(mesh_renderer).with(Position::new(0.0, 0.0, 10.0)).with(TransformMatrix::default()).build();
+
 
     let (window_inputs, hardware_inputs) = glium_state.input_queues();
 
@@ -55,6 +58,8 @@ fn main() {
         .with_thread_local(InputSystem::new(window_inputs.clone(), hardware_inputs.clone()))
         .with_thread_local(CursorLockSystem{})
         .with(PlayerMovement{}, "player_movement", &[])
+        .with(NewChunkPlacementSystem{}, "chunk_placer", &[])
+        .with_thread_local(ChunkMesherSystem{})
         .with(TransformSystem, "transform_system", &["player_movement"])
         .with_thread_local(VoxelRenderingSystem::new(glium_state.display.as_ref().unwrap().lock().unwrap().deref()))
         .build();
@@ -71,5 +76,6 @@ struct Game<'a, 'b>{
 impl GameState for Game<'_, '_>{
     fn game_loop(&mut self) {
         self.dispatcher.dispatch(&self.world);
+        self.world.maintain();
     }
 }

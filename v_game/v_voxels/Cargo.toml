@@ -9,8 +9,11 @@ edition = "2018"
 [dependencies]
 v_transform = {path="../v_transform"}
 v_renderer = {path="../v_renderer"}
+v_windowing = {path="../v_windowing"}
 specs = "0.16.1"
 nalgebra = "0.21.0"
 v_rle = {path="../v_rle"}
 dashmap = "3.11.1"
 noise = "0.6.0"
+rayon = "1.3.0"
+rand = "0.7.3"

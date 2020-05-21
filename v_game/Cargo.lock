@@ -1449,6 +1449,7 @@ dependencies = [
  "specs",
  "v_inputs",
  "v_transform",
+ "v_voxels",
 ]
 
 [[package]]
@@ -1518,10 +1519,13 @@ dependencies = [
  "dashmap",
  "nalgebra",
  "noise",
+ "rand 0.7.3",
+ "rayon",
  "specs",
  "v_renderer",
  "v_rle",
  "v_transform",
+ "v_windowing",
 ]
 
 [[package]]

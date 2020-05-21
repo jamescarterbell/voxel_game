@@ -18,3 +18,6 @@ v_renderer = {path="./v_renderer"}
 v_transform = {path="./v_transform"}
 v_agents = {path="./v_agents"}
 v_voxels = {path="./v_voxels"}
+
+[profile.dev]
+opt-level = 2

@@ -253,10 +253,10 @@ impl<'a> System<'a> for CursorLockSystem{
 
 #[derive(Display, FromPrimitive, PartialEq, Eq, Hash)]
 pub enum ButtonCode{
-    MB0 = 0,
+    Undefined = 0,
+    MB0 = 1,
     MB1,
     MB2,
-    Undefined,
 }
 
 impl ButtonCode{

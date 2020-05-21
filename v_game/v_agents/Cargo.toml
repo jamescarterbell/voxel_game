@@ -9,5 +9,6 @@ edition = "2018"
 [dependencies]
 v_inputs = {path="../v_inputs"}
 v_transform = {path="../v_transform"}
+v_voxels = {path="../v_voxels"}
 nalgebra = "0.21.0"
 specs = "0.16.1"
