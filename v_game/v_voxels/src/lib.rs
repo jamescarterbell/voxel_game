@@ -243,7 +243,7 @@ impl ChunkMesherSystem{
                                     Vector2::new(
                                         1.0, 1.0
                                     ),
-                                    1
+                                    0
                                 ));
                                 verts.push(VoxelVertex::new(
                                     Vector3::new(
@@ -253,7 +253,7 @@ impl ChunkMesherSystem{
                                     Vector2::new(
                                         1.0, 0.0
                                     ),
-                                    1
+                                    0
                                 ));
                                 verts.push(VoxelVertex::new(
                                     Vector3::new(
@@ -263,7 +263,7 @@ impl ChunkMesherSystem{
                                     Vector2::new(
                                         0.0, 0.0
                                     ),
-                                    1
+                                    0
                                 ));
                                 verts.push(VoxelVertex::new(
                                     Vector3::new(
@@ -273,7 +273,7 @@ impl ChunkMesherSystem{
                                     Vector2::new(
                                         0.0, 1.0
                                     ),
-                                    1
+                                    0
                                 ));
                             }
 
@@ -333,7 +333,7 @@ impl ChunkMesherSystem{
                                     Vector2::new(
                                         1.0, 1.0
                                     ),
-                                    1
+                                    2
                                 ));
                                 verts.push(VoxelVertex::new(
                                     Vector3::new(
@@ -343,7 +343,7 @@ impl ChunkMesherSystem{
                                     Vector2::new(
                                         1.0, 0.0
                                     ),
-                                    1
+                                    2
                                 ));
                                 verts.push(VoxelVertex::new(
                                     Vector3::new(
@@ -353,7 +353,7 @@ impl ChunkMesherSystem{
                                     Vector2::new(
                                         0.0, 0.0
                                     ),
-                                    1
+                                    2
                                 ));
                                 verts.push(VoxelVertex::new(
                                     Vector3::new(
@@ -363,7 +363,7 @@ impl ChunkMesherSystem{
                                     Vector2::new(
                                         0.0, 1.0
                                     ),
-                                    1
+                                    2
                                 ));
                             }
 
@@ -377,7 +377,7 @@ impl ChunkMesherSystem{
                                     Vector2::new(
                                         1.0, 1.0
                                     ),
-                                    1
+                                    3
                                 ));
                                 verts.push(VoxelVertex::new(
                                     Vector3::new(
@@ -387,7 +387,7 @@ impl ChunkMesherSystem{
                                     Vector2::new(
                                         1.0, 0.0
                                     ),
-                                    1
+                                    3
                                 ));
                                 verts.push(VoxelVertex::new(
                                     Vector3::new(
@@ -397,7 +397,7 @@ impl ChunkMesherSystem{
                                     Vector2::new(
                                         0.0, 0.0
                                     ),
-                                    1
+                                    3
                                 ));
                                 verts.push(VoxelVertex::new(
                                     Vector3::new(
@@ -407,7 +407,7 @@ impl ChunkMesherSystem{
                                     Vector2::new(
                                         0.0, 1.0
                                     ),
-                                    1
+                                    3
                                 ));
                             }
 
@@ -422,7 +422,7 @@ impl ChunkMesherSystem{
                                     Vector2::new(
                                         1.0, 1.0
                                     ),
-                                    1
+                                    4
                                 ));
                                 verts.push(VoxelVertex::new(
                                     Vector3::new(
@@ -432,7 +432,7 @@ impl ChunkMesherSystem{
                                     Vector2::new(
                                         1.0, 0.0
                                     ),
-                                    1
+                                    4
                                 ));
                                 verts.push(VoxelVertex::new(
                                     Vector3::new(
@@ -442,7 +442,7 @@ impl ChunkMesherSystem{
                                     Vector2::new(
                                         0.0, 0.0
                                     ),
-                                    1
+                                    4
                                 ));
                                 verts.push(VoxelVertex::new(
                                     Vector3::new(
@@ -452,7 +452,7 @@ impl ChunkMesherSystem{
                                     Vector2::new(
                                         0.0, 1.0
                                     ),
-                                    1
+                                    4
                                 ));
                             }
 
@@ -466,7 +466,7 @@ impl ChunkMesherSystem{
                                     Vector2::new(
                                         1.0, 1.0
                                     ),
-                                    1
+                                    5
                                 ));
                                 verts.push(VoxelVertex::new(
                                     Vector3::new(
@@ -476,7 +476,7 @@ impl ChunkMesherSystem{
                                     Vector2::new(
                                         1.0, 0.0
                                     ),
-                                    1
+                                    5
                                 ));
                                 verts.push(VoxelVertex::new(
                                     Vector3::new(
@@ -486,7 +486,7 @@ impl ChunkMesherSystem{
                                     Vector2::new(
                                         0.0, 0.0
                                     ),
-                                    1
+                                    5
                                 ));
                                 verts.push(VoxelVertex::new(
                                     Vector3::new(
@@ -496,7 +496,7 @@ impl ChunkMesherSystem{
                                     Vector2::new(
                                         0.0, 1.0
                                     ),
-                                    1
+                                    5
                                 ));
                             }
                         }

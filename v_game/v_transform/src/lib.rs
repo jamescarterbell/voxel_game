@@ -115,7 +115,11 @@ pub fn model_matrix_s(scale: &Scale) -> Matrix4<f32>{
     scaling(&scale.0)
 }
 
-pub fn model_matrix_r(rotation: &Rotation) -> Matrix4<f32>{ Matrix4::from(rotation.0.to_rotation_matrix())}
+pub fn model_matrix_r(rotation: &Rotation) -> Matrix4<f32>{
+    let mut r = Matrix4::from(rotation.0.to_rotation_matrix());
+    r[15] = 1.0;
+    r
+}
 
 pub struct TransformMatrix(Matrix4<f32>);
 
