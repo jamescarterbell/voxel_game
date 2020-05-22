@@ -34,16 +34,20 @@ impl<'a> System<'a> for PlayerMovement{
             rotation.apply_axis_angle_rotation(-delta.y, rotation.right());
 
             let y: f32 =
-                if *inputs.get_key(&KeyCode::W) == KeyState::Down {-0.025} else {0.0} +
-                if *inputs.get_key(&KeyCode::S) == KeyState::Down {0.025} else {0.0};
+                if *inputs.get_key(&KeyCode::W) == KeyState::Down {-0.0025} else {0.0} +
+                if *inputs.get_key(&KeyCode::S) == KeyState::Down {0.0025} else {0.0};
 
             let x: f32 =
-                if *inputs.get_key(&KeyCode::D) == KeyState::Down {0.025} else {0.0} +
-                if *inputs.get_key(&KeyCode::A) == KeyState::Down {-0.025} else {0.0};
+                if *inputs.get_key(&KeyCode::D) == KeyState::Down {0.0025} else {0.0} +
+                if *inputs.get_key(&KeyCode::A) == KeyState::Down {-0.0025} else {0.0};
 
             let place_coord = *position.value() + -rotation.forward() * 3.0;
             if *inputs.get_button(&ButtonCode::MB0) == KeyState::Pressed{
-                chunks.set_block(&BlockType::Dirt, &place_coord);
+                chunks.set_block(&BlockType::Grass, &place_coord);
+            }
+
+            if *inputs.get_button(&ButtonCode::MB1) == KeyState::Pressed{
+                chunks.set_block(&BlockType::Rock, &place_coord)
             }
 
             if *inputs.get_button(&ButtonCode::MB2) == KeyState::Pressed{

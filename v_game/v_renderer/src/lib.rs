@@ -9,25 +9,31 @@ use nalgebra_glm::perspective;
 use v_windowing::WindowDisplay;
 use v_transform::*;
 pub use glium::*;
+use glium::texture::RawImage2d;
+use glium::texture::Texture2dArray;
+use glium::uniforms::{MinifySamplerFilter, MagnifySamplerFilter};
+
 
 #[derive(Copy, Clone)]
 pub struct VoxelVertex{
     pub position: [f32; 3],
-    pub texcoords: [f32; 2],
+    pub tex_coord: [f32; 2],
+    pub tex_index: u32,
     pub lighting: u32
 }
 
 impl VoxelVertex{
-    pub fn new(position: Vector3::<f32>, texcoord: Vector2::<f32>, lighting: u32) -> Self{
+    pub fn new(position: Vector3::<f32>, texcoord: Vector2::<f32>, tex: u32, lighting: u32) -> Self{
         VoxelVertex{
             position: [position[0], position[1], position[2]],
-            texcoords: [texcoord[0], texcoord[1]],
+            tex_coord: [texcoord[0], texcoord[1]],
+            tex_index: tex,
             lighting
         }
     }
 }
 
-implement_vertex!(VoxelVertex, position, texcoords, lighting);
+implement_vertex!(VoxelVertex, position, tex_coord, tex_index, lighting);
 
 pub struct MeshBuffer<V>
     where V: Vertex{
@@ -82,14 +88,22 @@ impl Component for Camera{
 }
 
 pub struct VoxelRenderingSystem{
-    program: Program
+    program: Program,
+    textures: Texture2dArray
 }
 
 impl VoxelRenderingSystem{
     pub fn new(display: &Display) -> Self{
         VoxelRenderingSystem{
-            program:  glium::Program::from_source(display, include_str!("../../src/shaders/base_vertex.glsl"), include_str!("../../src/shaders/base_frag.glsl"), None).unwrap()
+            program:  glium::Program::from_source(display, include_str!("../../src/shaders/base_vertex.glsl"), include_str!("../../src/shaders/base_frag.glsl"), None).unwrap(),
+            textures: Texture2dArray::new(display, vec!["dirt.png", "grass.png", "rock.png"].iter().map(|x| Self::get_raw_image(*x)).collect()).unwrap(),
         }
+    }
+
+    fn get_raw_image(file_name: &str) -> RawImage2d<u8>{
+        let tex = image::open(format!("{}{}", "./assets/", file_name)).unwrap().to_rgba();
+        let tex_dimensions = tex.dimensions();
+        glium::texture::RawImage2d::from_raw_rgba_reversed(&tex.into_raw(), tex_dimensions)
     }
 }
 
@@ -121,12 +135,12 @@ impl<'a> System<'a> for VoxelRenderingSystem{
 
         //Draw the meshes
         for(camera, cam_transform) in (&cameras, &transforms).join() {
-            let v = camera.perspective_matrix(&frame);
-            let p = cam_transform.view_matrix();
+            let vp = camera.perspective_matrix(&frame) * cam_transform.view_matrix();
+            let sampler = self.textures.sampled().minify_filter(MinifySamplerFilter::Nearest).magnify_filter(MagnifySamplerFilter::Nearest);
             for (voxel_mesh, transform) in (&voxel_meshes, &transforms).join() {
-                //let mvp = (vp * transform.matrix());
+                let mvp = (vp * transform.matrix());
                 let mesh_buffer = voxel_mesh.mesh.lock().unwrap();
-                frame.draw(&mesh_buffer.vertex_buffer, &mesh_buffer.index_buffer, &self.program, &uniform!(m: transform.matrix().as_ref().clone(), v: v.as_ref().clone(), p: p.as_ref().clone()), &params);
+                frame.draw(&mesh_buffer.vertex_buffer, &mesh_buffer.index_buffer, &self.program, &uniform!(mvp: mvp.as_ref().clone(), tex: sampler), &params);
             }
         }
 

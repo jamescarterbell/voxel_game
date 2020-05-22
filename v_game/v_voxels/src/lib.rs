@@ -32,6 +32,7 @@ pub enum BlockType{
     Dynamic = 0,
     Air,
     Dirt,
+    Grass,
     Rock,
 }
 
@@ -43,6 +44,27 @@ impl BlockType{
             _ => false,
         }
     }
+
+    pub fn texture_index(&self, direction: Direction) -> Option<u32>{
+        match self{
+            BlockType::Dirt => Some(0),
+            BlockType::Grass => match direction{
+                Direction::Top => Some(1),
+                _ => Some(0),
+            },
+            BlockType::Rock => Some(2),
+            _ => None,
+        }
+    }
+}
+
+pub enum Direction{
+    Top,
+    Bottom,
+    Right,
+    Left,
+    Front,
+    Back
 }
 
 pub struct Chunk{
@@ -235,6 +257,7 @@ impl ChunkMesherSystem{
 
                             let top_block = chunks.get_block(&(block_coord + Vector3::new(0.0, 1.0, 0.0) * BLOCK_SIZE));
                             if top_block.is_transparent() {
+                                let tex = block.texture_index(Direction::Top).unwrap();
                                 verts.push(VoxelVertex::new(
                                     Vector3::new(
                                         block_x as f32 * BLOCK_SIZE + BLOCK_SIZE / 2.0,
@@ -243,6 +266,7 @@ impl ChunkMesherSystem{
                                     Vector2::new(
                                         1.0, 1.0
                                     ),
+                                    tex,
                                     0
                                 ));
                                 verts.push(VoxelVertex::new(
@@ -253,6 +277,7 @@ impl ChunkMesherSystem{
                                     Vector2::new(
                                         1.0, 0.0
                                     ),
+                                    tex,
                                     0
                                 ));
                                 verts.push(VoxelVertex::new(
@@ -263,6 +288,7 @@ impl ChunkMesherSystem{
                                     Vector2::new(
                                         0.0, 0.0
                                     ),
+                                    tex,
                                     0
                                 ));
                                 verts.push(VoxelVertex::new(
@@ -273,6 +299,7 @@ impl ChunkMesherSystem{
                                     Vector2::new(
                                         0.0, 1.0
                                     ),
+                                    tex,
                                     0
                                 ));
                             }
@@ -280,6 +307,7 @@ impl ChunkMesherSystem{
 
                             let bottom_block = chunks.get_block(&(block_coord + Vector3::new(0.0, -1.0, 0.0) * BLOCK_SIZE));
                             if bottom_block.is_transparent() {
+                                let tex = block.texture_index(Direction::Bottom).unwrap();
                                 verts.push(VoxelVertex::new(
                                     Vector3::new(
                                         block_x as f32 * BLOCK_SIZE + BLOCK_SIZE / 2.0,
@@ -288,6 +316,7 @@ impl ChunkMesherSystem{
                                     Vector2::new(
                                         1.0, 1.0
                                     ),
+                                    tex,
                                     1
                                 ));
                                 verts.push(VoxelVertex::new(
@@ -298,6 +327,7 @@ impl ChunkMesherSystem{
                                     Vector2::new(
                                         1.0, 0.0
                                     ),
+                                    tex,
                                     1
                                 ));
                                 verts.push(VoxelVertex::new(
@@ -308,6 +338,7 @@ impl ChunkMesherSystem{
                                     Vector2::new(
                                         0.0, 0.0
                                     ),
+                                    tex,
                                     1
                                 ));
                                 verts.push(VoxelVertex::new(
@@ -318,6 +349,7 @@ impl ChunkMesherSystem{
                                     Vector2::new(
                                         0.0, 1.0
                                     ),
+                                    tex,
                                     1
                                 ));
                             }
@@ -325,6 +357,7 @@ impl ChunkMesherSystem{
 
                             let right_block = chunks.get_block(&(block_coord + Vector3::new(1.0, 0.0, 0.0) * BLOCK_SIZE));
                             if right_block.is_transparent() {
+                                let tex = block.texture_index(Direction::Right).unwrap();
                                 verts.push(VoxelVertex::new(
                                     Vector3::new(
                                         block_x as f32 * BLOCK_SIZE + BLOCK_SIZE / 2.0,
@@ -333,6 +366,7 @@ impl ChunkMesherSystem{
                                     Vector2::new(
                                         1.0, 1.0
                                     ),
+                                    tex,
                                     2
                                 ));
                                 verts.push(VoxelVertex::new(
@@ -343,6 +377,7 @@ impl ChunkMesherSystem{
                                     Vector2::new(
                                         1.0, 0.0
                                     ),
+                                    tex,
                                     2
                                 ));
                                 verts.push(VoxelVertex::new(
@@ -353,6 +388,7 @@ impl ChunkMesherSystem{
                                     Vector2::new(
                                         0.0, 0.0
                                     ),
+                                    tex,
                                     2
                                 ));
                                 verts.push(VoxelVertex::new(
@@ -363,12 +399,14 @@ impl ChunkMesherSystem{
                                     Vector2::new(
                                         0.0, 1.0
                                     ),
+                                    tex,
                                     2
                                 ));
                             }
 
                             let left_block = chunks.get_block(&(block_coord + Vector3::new(-1.0, 0.0, 0.0) * BLOCK_SIZE));
                             if left_block.is_transparent() {
+                                let tex = block.texture_index(Direction::Left).unwrap();
                                 verts.push(VoxelVertex::new(
                                     Vector3::new(
                                         block_x as f32 * BLOCK_SIZE - BLOCK_SIZE / 2.0,
@@ -377,6 +415,7 @@ impl ChunkMesherSystem{
                                     Vector2::new(
                                         1.0, 1.0
                                     ),
+                                    tex,
                                     3
                                 ));
                                 verts.push(VoxelVertex::new(
@@ -387,6 +426,7 @@ impl ChunkMesherSystem{
                                     Vector2::new(
                                         1.0, 0.0
                                     ),
+                                    tex,
                                     3
                                 ));
                                 verts.push(VoxelVertex::new(
@@ -397,6 +437,7 @@ impl ChunkMesherSystem{
                                     Vector2::new(
                                         0.0, 0.0
                                     ),
+                                    tex,
                                     3
                                 ));
                                 verts.push(VoxelVertex::new(
@@ -407,6 +448,7 @@ impl ChunkMesherSystem{
                                     Vector2::new(
                                         0.0, 1.0
                                     ),
+                                    tex,
                                     3
                                 ));
                             }
@@ -414,6 +456,7 @@ impl ChunkMesherSystem{
 
                             let front_block = chunks.get_block(&(block_coord + Vector3::new(0.0, 0.0, 1.0) * BLOCK_SIZE));
                             if front_block.is_transparent() {
+                                let tex = block.texture_index(Direction::Front).unwrap();
                                 verts.push(VoxelVertex::new(
                                     Vector3::new(
                                         block_x as f32 * BLOCK_SIZE + BLOCK_SIZE / 2.0,
@@ -422,6 +465,7 @@ impl ChunkMesherSystem{
                                     Vector2::new(
                                         1.0, 1.0
                                     ),
+                                    tex,
                                     4
                                 ));
                                 verts.push(VoxelVertex::new(
@@ -432,6 +476,7 @@ impl ChunkMesherSystem{
                                     Vector2::new(
                                         1.0, 0.0
                                     ),
+                                    tex,
                                     4
                                 ));
                                 verts.push(VoxelVertex::new(
@@ -442,6 +487,7 @@ impl ChunkMesherSystem{
                                     Vector2::new(
                                         0.0, 0.0
                                     ),
+                                    tex,
                                     4
                                 ));
                                 verts.push(VoxelVertex::new(
@@ -452,12 +498,14 @@ impl ChunkMesherSystem{
                                     Vector2::new(
                                         0.0, 1.0
                                     ),
+                                    tex,
                                     4
                                 ));
                             }
 
                             let back_block = chunks.get_block(&(block_coord + Vector3::new(0.0, 0.0, -1.0) * BLOCK_SIZE));
                             if back_block.is_transparent() {
+                                let tex = block.texture_index(Direction::Back).unwrap();
                                 verts.push(VoxelVertex::new(
                                     Vector3::new(
                                         block_x as f32 * BLOCK_SIZE - BLOCK_SIZE / 2.0,
@@ -466,6 +514,7 @@ impl ChunkMesherSystem{
                                     Vector2::new(
                                         1.0, 1.0
                                     ),
+                                    tex,
                                     5
                                 ));
                                 verts.push(VoxelVertex::new(
@@ -476,6 +525,7 @@ impl ChunkMesherSystem{
                                     Vector2::new(
                                         1.0, 0.0
                                     ),
+                                    tex,
                                     5
                                 ));
                                 verts.push(VoxelVertex::new(
@@ -486,6 +536,7 @@ impl ChunkMesherSystem{
                                     Vector2::new(
                                         0.0, 0.0
                                     ),
+                                    tex,
                                     5
                                 ));
                                 verts.push(VoxelVertex::new(
@@ -496,6 +547,7 @@ impl ChunkMesherSystem{
                                     Vector2::new(
                                         0.0, 1.0
                                     ),
+                                    tex,
                                     5
                                 ));
                             }

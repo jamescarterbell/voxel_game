@@ -2,15 +2,16 @@
 
 in vec3 position;
 in vec2 tex_coord;
+in uint tex_index;
 in int lighting;
 
-uniform mat4 m;
-uniform mat4 v;
-uniform mat4 p;
+uniform mat4 mvp;
 
-flat out int vlighting;
+flat out uint o_tex_index;
+out vec2 o_tex_coord;
 
 void main() {
-    gl_Position = v * p * m * vec4(position, 1.0);
-    vlighting = lighting;
+    gl_Position = mvp * vec4(position, 1.0);
+    o_tex_index = tex_index;
+    o_tex_coord = tex_coord;
 }

@@ -14,3 +14,4 @@ specs = "0.16.1"
 nalgebra-glm = "0.7.0"
 v_windowing = {path="../v_windowing"}
 v_transform = {path="../v_transform"}
+image = "*"
