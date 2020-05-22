@@ -28,8 +28,8 @@ impl<'a> System<'a> for PlayerMovement{
         for (player, position, rotation) in (&players, &mut positions, &mut rotations).join(){
             let mut delta = (*inputs.get_mouse_delta()).clone();
             delta /= 1000.0;
-            delta[0] = if delta[0].abs() > 0.0001 {delta[0]} else {0.0};
-            delta[1] = if delta[1].abs() > 0.0001 {delta[1]} else {0.0};
+            delta[0] = if delta[0].abs() > 0.00001 {delta[0]} else {0.0};
+            delta[1] = if delta[1].abs() > 0.00001 {delta[1]} else {0.0};
             rotation.apply_axis_angle_rotation(-delta.x, Vector3::new(0.0, 1.0, 0.0));
             rotation.apply_axis_angle_rotation(-delta.y, rotation.right());
 
@@ -43,7 +43,7 @@ impl<'a> System<'a> for PlayerMovement{
 
             let place_coord = *position.value() + -rotation.forward() * 3.0;
             if *inputs.get_button(&ButtonCode::MB0) == KeyState::Pressed{
-                chunks.set_block(&BlockType::Dirt, &place_coord)
+                chunks.set_block(&BlockType::Dirt, &place_coord);
             }
 
             if *inputs.get_button(&ButtonCode::MB2) == KeyState::Pressed{
@@ -51,6 +51,7 @@ impl<'a> System<'a> for PlayerMovement{
             }
 
             *position.value() += y * rotation.forward() + x * rotation.right();
+            let pos =  position.value();
         }
     }
 }

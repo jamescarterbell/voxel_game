@@ -61,9 +61,7 @@ impl Rotation{
         (&self.0 * Vector3::new(1.0, 0.0, 0.0)).xyz()
     }
 
-    pub fn up(&self) -> Vector3<f32>{
-        (&self.0 * Vector3::new(0.0, 1.0, 0.0)).xyz()
-    }
+    pub fn up(&self) -> Vector3<f32>{ (&self.0 * Vector3::new(0.0, 1.0, 0.0)).xyz() }
 }
 
 pub struct Scale(Vector3<f32>, bool);
@@ -111,15 +109,13 @@ pub fn model_matrix_sr(rotation: &Rotation, scale: &Scale) -> Matrix4<f32>{
     scale * rotation
 }
 
-pub fn model_matrix_p(position: &Position) -> Matrix4<f32>{
-    translation(&position.0)
-}
+pub fn model_matrix_p(position: &Position) -> Matrix4<f32>{ translation(&position.0) }
 
 pub fn model_matrix_s(scale: &Scale) -> Matrix4<f32>{
     scaling(&scale.0)
 }
 
-pub fn model_matrix_r(rotation: &Rotation) -> Matrix4<f32>{Matrix4::from(rotation.0.to_rotation_matrix())}
+pub fn model_matrix_r(rotation: &Rotation) -> Matrix4<f32>{ Matrix4::from(rotation.0.to_rotation_matrix())}
 
 pub struct TransformMatrix(Matrix4<f32>);
 
@@ -137,7 +133,9 @@ impl Default for TransformMatrix{
 
 impl TransformMatrix{
     pub fn view_matrix(&self) -> Matrix4<f32>{
-        self.0.pseudo_inverse(0.0001).unwrap()
+        let mut v = self.0.pseudo_inverse(0.00001).unwrap();
+        v[15] = 1.0;
+        v
     }
 
     pub fn matrix(&self) -> &Matrix4<f32>{

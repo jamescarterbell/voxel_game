@@ -23,7 +23,7 @@ use specs::world::EntitiesRes;
 use rand::*;
 
 const BLOCK_SIZE: f32 = 0.5;
-const CHUNK_SIZE: usize = 16;
+const CHUNK_SIZE: usize = 32;
 const CHUNK_SIZE_2: usize = CHUNK_SIZE * CHUNK_SIZE;
 const CHUNK_SIZE_3: usize = CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE;
 
@@ -96,25 +96,24 @@ impl ChunkStorage{
     }
 
     pub fn get_chunk(&self, place: Vector3<f32>) -> Option<Ref<Vector3<i32>, Chunk>>{
-        let chunk_coord = Vector3::new((place[0] as f32 / CHUNK_SIZE as f32 / BLOCK_SIZE).floor() as i32,
-                                       (place[1] as f32 / CHUNK_SIZE as f32 / BLOCK_SIZE).floor() as i32,
-                                       (place[2] as f32 / CHUNK_SIZE as f32 / BLOCK_SIZE).floor() as i32);
+        let chunk_coord = place.map(|x| (x as f32 / CHUNK_SIZE as f32 / BLOCK_SIZE).floor() as i32);
         self.map.get(&chunk_coord)
     }
 
     pub fn set_chunk(&mut self, place: Vector3<f32>, chunk: Chunk){
-        let chunk_coord = Vector3::new((place[0] as f32 / CHUNK_SIZE as f32 / BLOCK_SIZE).floor() as i32,
-                                       (place[1] as f32 / CHUNK_SIZE as f32 / BLOCK_SIZE).floor() as i32,
-                                       (place[2] as f32 / CHUNK_SIZE as f32 / BLOCK_SIZE).floor() as i32);
+        let chunk_coord = place.map(|x| (x as f32 / CHUNK_SIZE as f32 / BLOCK_SIZE).floor() as i32);
         self.map.insert(chunk_coord, chunk);
     }
 
+    fn world_point_to_chunk_block(place: &Vector3<f32>) -> (Vector3<i32>, Vector3<usize>){
+        let chunk_coord = place.map(|x| (x as f32 / CHUNK_SIZE as f32 / BLOCK_SIZE).floor() as i32);
+        let chunk_coord_f32 = chunk_coord.map(|x| x as f32);
+        let block_coord = ((place   - chunk_coord_f32 * CHUNK_SIZE as f32 * BLOCK_SIZE) / BLOCK_SIZE).map(|x| x as usize);
+        (chunk_coord, block_coord)
+    }
+
     pub fn set_block(&mut self, block: &BlockType, place: &Vector3<f32>){
-        let chunk_coord = Vector3::new((place[0] as f32 / CHUNK_SIZE as f32 / BLOCK_SIZE).floor() as i32,
-                                 (place[1] as f32 / CHUNK_SIZE as f32 / BLOCK_SIZE).floor() as i32,
-                                 (place[2] as f32 / CHUNK_SIZE as f32 / BLOCK_SIZE).floor() as i32);
-        let chunk_coord_f32 = Vector3::new(chunk_coord[0] as f32, chunk_coord[1] as f32, chunk_coord[2] as f32);
-        let block_coord = place - chunk_coord_f32 * CHUNK_SIZE as f32 * BLOCK_SIZE;
+        let (chunk_coord, block_coord) = Self::world_point_to_chunk_block(place);
         let mut chunk = match self.map.get_mut(&chunk_coord){
             Some(chunk) => chunk,
             None => {
@@ -123,7 +122,6 @@ impl ChunkStorage{
                 self.map.get_mut(&chunk_coord).unwrap()
             }
         };
-        let block_coord = Vector3::new(block_coord[0] as usize, block_coord[1] as usize, block_coord[2] as usize);
 
         if block_coord[0] == 0{
             self.changed_chunks.insert(chunk_coord + Vector3::new(-1, 0, 0));
@@ -148,11 +146,7 @@ impl ChunkStorage{
     }
 
     pub fn get_block(&self, place: &Vector3<f32>) -> BlockType{
-        let chunk_coord = Vector3::new((place[0] as f32 / CHUNK_SIZE as f32 / BLOCK_SIZE).floor() as i32,
-                                       (place[1] as f32 / CHUNK_SIZE as f32 / BLOCK_SIZE).floor() as i32,
-                                       (place[2] as f32 / CHUNK_SIZE as f32 / BLOCK_SIZE).floor() as i32);
-        let chunk_coord_f32 = Vector3::new(chunk_coord[0] as f32, chunk_coord[1] as f32, chunk_coord[2] as f32);
-        let mut block_coord = place - chunk_coord_f32 * CHUNK_SIZE as f32 * BLOCK_SIZE;
+        let (chunk_coord, block_coord) = Self::world_point_to_chunk_block(place);
         let mut chunk = match self.map.get_mut(&chunk_coord){
             Some(chunk) => chunk,
             None => {
@@ -161,7 +155,6 @@ impl ChunkStorage{
                 self.map.get_mut(&chunk_coord).unwrap()
             }
         };
-        let block_coord = Vector3::new(block_coord[0] as usize, block_coord[1] as usize, block_coord[2] as usize);
         chunk.get_block(block_coord)
     }
 }
@@ -236,7 +229,7 @@ impl ChunkMesherSystem{
                     for block_y in 0..CHUNK_SIZE{
                         for block_z in 0..CHUNK_SIZE{
                             let block_coord = Vector3::new(block_x as f32, block_y as f32, block_z as f32) * BLOCK_SIZE
-                                            + Vector3::new(marker.coords[0] as f32, marker.coords[1] as f32, marker.coords[2] as f32) * CHUNK_SIZE as f32 * BLOCK_SIZE;
+                                            + marker.coords.map(|x| x as f32) * CHUNK_SIZE as f32 * BLOCK_SIZE;
                             let block = chunks.get_block(&block_coord);
                             if block == BlockType::Air { continue }
 
@@ -561,10 +554,9 @@ impl<'a> System<'a> for NewChunkPlacementSystem{
 
     fn run(&mut self, (mut chunks, entities, mut chunk_markers, mut positions, mut transforms, lazy): Self::SystemData){
         if let Some(new_chunk_coord)  = chunks.needed_chunks.lock().unwrap().pop(){
+            let chunk_pos = new_chunk_coord.map(|x| x as f32 * BLOCK_SIZE * CHUNK_SIZE as f32);
             lazy.create_entity(&entities)
-                .with(Position::new(new_chunk_coord[0] as f32 * CHUNK_SIZE as f32 * BLOCK_SIZE,
-                                    new_chunk_coord[1] as f32 * CHUNK_SIZE as f32 * BLOCK_SIZE,
-                                    new_chunk_coord[2] as f32 * CHUNK_SIZE as f32 * BLOCK_SIZE ))
+                .with(Position::new(chunk_pos[0], chunk_pos[1], chunk_pos[2]))
                 .with(TransformMatrix::default())
                 .with(ChunkMarker{coords:new_chunk_coord, changed:true, renderable:true})
                 .build();

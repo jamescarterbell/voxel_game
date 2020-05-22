@@ -121,11 +121,12 @@ impl<'a> System<'a> for VoxelRenderingSystem{
 
         //Draw the meshes
         for(camera, cam_transform) in (&cameras, &transforms).join() {
-            let vp = camera.perspective_matrix(&frame) * cam_transform.view_matrix();
+            let v = camera.perspective_matrix(&frame);
+            let p = cam_transform.view_matrix();
             for (voxel_mesh, transform) in (&voxel_meshes, &transforms).join() {
-                let mvp = (vp * transform.matrix());
+                //let mvp = (vp * transform.matrix());
                 let mesh_buffer = voxel_mesh.mesh.lock().unwrap();
-                frame.draw(&mesh_buffer.vertex_buffer, &mesh_buffer.index_buffer, &self.program, &uniform!(mvp: mvp.as_ref().clone()), &params);
+                frame.draw(&mesh_buffer.vertex_buffer, &mesh_buffer.index_buffer, &self.program, &uniform!(m: transform.matrix().as_ref().clone(), v: v.as_ref().clone(), p: p.as_ref().clone()), &params);
             }
         }
 

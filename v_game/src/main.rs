@@ -17,22 +17,12 @@ use glium::uniforms::EmptyUniforms;
 use glium::*;
 use glutin::CreationError::Window;
 use std::ops::Deref;
+use std::{time, thread};
 
 fn main() {
     let glium_state = GliumState::new();
     let mut world = World::new();
 
-    let verts = vec![
-        VoxelVertex{position: [1.0, 0.0, 0.0], texcoords: [1.0, 1.0], lighting: 0},
-        VoxelVertex{position: [0.0, 0.0, 0.0], texcoords: [1.0, 1.0], lighting: 0},
-        VoxelVertex{position: [1.0, 1.0, 0.0], texcoords: [1.0, 1.0], lighting: 0},
-        VoxelVertex{position: [0.0, 1.0, 0.0], texcoords: [1.0, 1.0], lighting: 0}];
-
-    let tris = vec![0, 1, 2, 1, 3, 2];
-
-    let base_mesh = MeshBuffer::new(glium_state.display.as_ref().unwrap().lock().unwrap().deref(), verts, tris);
-
-    let mesh_renderer = MeshRenderer{mesh: Arc::new(Mutex::new(base_mesh))};
 
     world.register::<MeshRenderer<VoxelVertex>>();
     world.register::<Position>();
@@ -49,8 +39,6 @@ fn main() {
     world.insert(ChunkStorage::new());
 
     world.create_entity().with(Camera{fov: 1.57, znear: 0.001, zfar: 4096.0}).with(Position::new(0.0, 0.0, 0.0)).with(Rotation::new()).with(Player{}).with(TransformMatrix::default()).build();
-    world.create_entity().with(mesh_renderer).with(Position::new(0.0, 0.0, 10.0)).with(TransformMatrix::default()).build();
-
 
     let (window_inputs, hardware_inputs) = glium_state.input_queues();
 
