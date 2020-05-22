@@ -137,7 +137,7 @@ impl Default for TransformMatrix{
 
 impl TransformMatrix{
     pub fn view_matrix(&self) -> Matrix4<f32>{
-        let mut v = self.0.pseudo_inverse(0.00001).unwrap();
+        let mut v = self.0.try_inverse().unwrap();
         v[15] = 1.0;
         v
     }
