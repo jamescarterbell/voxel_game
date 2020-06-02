@@ -1,5 +1,8 @@
 use std::thread::current;
+use std::ops::Range;
 
+/// A simple run length encoded compressed vector.
+/// All items stored/returned by value meaning they must be cloneable.
 pub struct RLE<T>
     where T: Eq + PartialEq + Clone{
     raw: Vec<(usize, T)>,
@@ -39,6 +42,7 @@ impl<T> RLE<T>
         (compressed, size)
     }
 
+    /// Get a value at a given index
     pub fn get(&self, index: usize) -> Result<T, RLEError>{
         if index >= self.raw_length{
             return Err(RLEError::OutOfRange);
@@ -54,6 +58,7 @@ impl<T> RLE<T>
         Ok(self.raw.last().unwrap().1.clone())
     }
 
+    /// Set a value at the given index, value set via cloning
     pub fn set(&mut self, index: usize, item: &T) -> Result<(), RLEError>{
         if index >= self.raw_length{
             return Err(RLEError::OutOfRange);
@@ -99,6 +104,94 @@ impl<T> RLE<T>
                 self.raw.remove(target_index - 1);
             }
         }
+        Ok(())
+    }
+
+    /// Get a range over a group of values, returns as a vector and not an iterator
+    /// meaning that this get's an uncompressed range
+    pub fn get_range(&self, index: Range<usize>) -> Result<Vec<T>, RLEError>{
+        if index.start >= self.raw_length || index.end > self.raw_length{
+            return Err(RLEError::OutOfRange);
+        }
+        let mut vec = Vec::new();
+        for item in self.iter().skip(index.start).take(index.end - index.start){
+            vec.push(item.clone());
+        }
+        Ok(vec)
+    }
+
+    /// Set a range to a singular value
+    pub fn set_range_singular(&mut self, item: T, index: Range<usize>) -> Result<(), RLEError>{
+        if index.start >= self.raw_length || index.end > self.raw_length{
+            return Err(RLEError::OutOfRange);
+        }
+        let mut current_start = 0;
+        let mut start_index = 0;
+        // Find the beginning placement of the range
+        for (i, (num, data)) in self.raw.iter().enumerate(){
+            let next = current_start + *num;
+            //It's somewhere *within* the current item
+            if next > index.start{
+                start_index = i;
+                break;
+            }
+            current_start = next;
+        }
+        // Find the end placement of the range
+        let mut end_index = 0;
+        let mut current_end = 0;
+        for (i, (num, data)) in self.raw.iter().enumerate(){
+            let next = current_end + *num;
+            //It's somewhere *within* the current item
+            if next > index.end{
+                end_index = i;
+                break;
+            }
+            current_end = next;
+        }
+
+        let target_start_place = index.start - current_start;
+        let target_end_place = index.end - current_end;
+
+        let second_half_end = if target_end_place > 0 {self.raw[end_index].0 - target_end_place} else {0} ;
+
+        let start_item = self.raw[start_index].1.clone();
+        let end_item = self.raw[end_index].1.clone();
+
+        for i in (start_index..end_index + 1).rev(){
+            self.raw.remove(i);
+        }
+
+        self.raw.insert(start_index, (second_half_end, end_item));
+        self.raw.insert(start_index, (index.end - index.start, item));
+        self.raw.insert(start_index, (target_start_place, start_item));
+
+
+        if start_index + 2 < self.raw.len() && self.raw[start_index + 2].0 == 0{
+            self.raw.remove(start_index + 2);
+        }
+        if start_index + 1 < self.raw.len() && self.raw[start_index + 1].0 == 0{
+            self.raw.remove(start_index + 1);
+        }
+        if self.raw[start_index].0 == 0{
+            self.raw.remove(start_index);
+        }
+
+        if start_index + 2 < self.raw.len() && self.raw[start_index + 2].1 == self.raw[start_index + 1].1{
+            self.raw[start_index + 1].0 += self.raw[start_index + 2].0;
+            self.raw.remove(start_index + 2);
+        }
+
+        if start_index + 1 < self.raw.len() && self.raw[start_index + 1].1 == self.raw[start_index].1{
+            self.raw[start_index].0 += self.raw[start_index + 1].0;
+            self.raw.remove(start_index + 1);
+        }
+
+        if start_index < self.raw.len() && start_index > 0 && self.raw[start_index - 1].1 == self.raw[start_index].1{
+            self.raw[start_index - 1].0 += self.raw[start_index].0;
+            self.raw.remove(start_index);
+        }
+
         Ok(())
     }
 
@@ -152,6 +245,12 @@ impl<'a, T> Iterator for RLEIterator<'a, T>
     }
 }
 
+unsafe impl<T> Send for RLE<T>
+    where T: Eq + PartialEq + Clone + Send{}
+
+unsafe impl<T> Sync for RLE<T>
+    where T: Eq + PartialEq + Clone + Send{}
+
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum RLEError{
     OutOfRange,
@@ -161,27 +260,23 @@ pub enum RLEError{
 mod tests {
     use super::*;
     use rand::prelude::*;
+    use std::iter::{repeat_with, repeat};
+
     #[test]
     fn get_set() {
-        let length = 100000;
-        let mut longer = 0;
-        let mut ratio = 0.0;
-        let test_num = 100;
-        for tests in 0..test_num {
-            let mut rle = RLE::from(Some(random::<u32>()).into_iter().cycle().take(length));
-            for i in 0..100000 {
-                let value = random::<u32>() % 400;
-                let coord = length / (400);
-                let place = coord * value as usize + (random::<usize>() % 3);
-                rle.set(place, &value);
-                assert_eq!(rle.get(place).unwrap(), value);
-            }
-            let temp_ratio = ((rle.compressed_len() as f32) * (4.0 + 4.0)) / ((rle.raw_length as f32) * 4.0);
-            ratio += temp_ratio;
-            if temp_ratio > 1.0{
-                longer += 1;
-            }
+        let mut r: RLE<usize> = RLE::from(repeat(0).take(10000));
+        for (number, item) in r.raw.iter(){
+            println!("number: {}\t item: {}", number, item);
         }
-        ratio /= test_num as f32;
+        println!("=========================");
+        r.set_range_singular(1, 0..20);
+        for (number, item) in r.raw.iter(){
+            println!("number: {}\t item: {}", number, item);
+        }
+        println!("=========================");
+        r.set_range_singular(1, 20..25);
+        for (number, item) in r.raw.iter(){
+            println!("number: {}\t item: {}", number, item);
+        }
     }
 }
